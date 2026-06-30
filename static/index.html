@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Course Scheduler – Input</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --dark: #1a1a2e;
+      --mid:  #16213e;
+      --acc:  #4f8ef7;
+      --bg:   #f0f2f8;
+    }
+    body { background: var(--bg); font-size: 14px; }
+    .header-bar {
+      background: linear-gradient(135deg, var(--dark) 0%, var(--mid) 100%);
+      color: #fff; padding: 22px 0 18px;
+    }
+    .header-bar h1 { font-size: 1.5rem; font-weight: 700; margin: 0; }
+    .header-bar p  { font-size: 13px; opacity: .65; margin: 4px 0 0; }
+
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 14px rgba(0,0,0,.07); }
+
+    /* Tabs */
+    .step-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .step-tab {
+      padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
+      font-weight: 600; border: 2px solid #d0d5e8; background: #fff;
+      color: #6c757d; transition: all .2s;
+    }
+    .step-tab.active { background: var(--dark); color: #fff; border-color: var(--dark); }
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    /* Tables */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      background: var(--dark); color: #fff; padding: 9px 10px;
+      font-weight: 500; font-size: 12px; letter-spacing: .03em;
+    }
+    .data-table td { padding: 6px 8px; border-bottom: 1px solid #e8eaf0; vertical-align: middle; }
+    .data-table tr:hover td { background: #f5f7ff; }
+    .data-table input, .data-table select {
+      border: 1px solid #d0d5e8; border-radius: 6px;
+      padding: 4px 8px; width: 100%; font-size: 13px; background: #fff;
+    }
+    .data-table input:focus, .data-table select:focus {
+      outline: none; border-color: var(--acc); box-shadow: 0 0 0 2px rgba(79,142,247,.15);
+    }
+
+    /* Allocation sub-rows */
+    .alloc-row td { background: #f9faff; font-size: 12px; }
+    .alloc-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #e8edf8; border-radius: 20px; padding: 3px 10px;
+      font-size: 12px; margin: 2px;
+    }
+    .alloc-badge .rm { cursor: pointer; color: #c0392b; font-weight: 700; line-height:1; }
+
+    /* Buttons */
+    .btn-add { font-size: 12px; padding: 5px 14px; border-radius: 7px; }
+    .btn-del { background: none; border: none; color: #c0392b; font-size: 16px; cursor: pointer; padding: 2px 6px; }
+    .btn-solve {
+      background: var(--dark); color: #fff; border: none;
+      padding: 13px 40px; border-radius: 10px; font-size: 15px;
+      font-weight: 700; cursor: pointer; transition: background .2s;
+    }
+    .btn-solve:hover { background: var(--acc); }
+    .btn-solve:disabled { background: #aaa; cursor: not-allowed; }
+
+    /* Status */
+    #status-box { display: none; }
+    .spinner-border { width: 1.1rem; height: 1.1rem; border-width: 2px; }
+
+    /* Section label */
+    .sec-label {
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #8892a4; margin-bottom: 12px;
+    }
+
+    /* Preset banner */
+    .preset-bar {
+      background: #fff3cd; border-radius: 8px; padding: 10px 16px;
+      font-size: 13px; margin-bottom: 14px; border-left: 4px solid #f0ad4e;
+    }
+
+    /* Range inputs */
+    .range-row { display: flex; align-items: center; gap: 10px; }
+    .range-val { font-weight: 700; min-width: 30px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div class="container">
+    <h1>🎓 University Course Scheduler</h1>
+    <p>Multi-objective scheduling using NSGA-II &nbsp;·&nbsp; RUET IPE Thesis Project</p>
+  </div>
+</div>
+
+<div class="container py-4 pb-5">
+
+  <!-- Preset loader -->
+  <div class="preset-bar">
+    💡 <strong>Quick start:</strong> Load the RUET IPE sample data automatically, or fill in your own below.
+    <button class="btn btn-sm btn-warning ms-2 fw-semibold" onclick="loadPreset()">Load RUET IPE Sample</button>
+    <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearAll()">Clear All</button>
+  </div>
+
+  <!-- Step Tabs -->
+  <div class="step-tabs">
+    <div class="step-tab active" onclick="switchTab(0)">① Student Groups</div>
+    <div class="step-tab" onclick="switchTab(1)">② Courses</div>
+    <div class="step-tab" onclick="switchTab(2)">③ Faculty Allocation</div>
+    <div class="step-tab" onclick="switchTab(3)">④ Rooms & Solver</div>
+  </div>
+
+  <!-- ── TAB 0: Student Groups ── -->
+  <div class="step-panel active" id="panel-0">
+    <div class="card p-4">
+      <div class="sec-label">Student Groups / Sections</div>
+      <p class="text-muted" style="font-size:13px">Define each year or section. Courses will be assigned to one group.</p>
+      <table class="data-table" id="sg-table">
+        <thead><tr><th>#</th><th>Group Name</th><th></th></tr></thead>
+        <tbody id="sg-body"></tbody>
+      </table>
+      <button class="btn btn-outline-primary btn-add mt-3" onclick="addGroup()">+ Add Group</button>
+    </div>
+  </div>
+
+  <!-- ── TAB 1: Courses ── -->
+  <div class="step-panel" id="panel-1">
+    <div class="card p-4">
+      <div class="sec-label">Course List</div>
+      <p class="text-muted" style="font-size:13px">
+        Each theory course generates <strong>sessions equal to its credits</strong> (3-credit → 3 × 50 min).
+        Each lab course generates <strong>1 session × 150 min</strong>.
+      </p>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="course-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Course Code</th><th>Type</th><th>Credits</th>
+              <th>Student Group</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="course-body"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-outline-primary btn-add mt-3" onclick="addCourse()">+ Add Course</button>
+    </div>
+  </div>
+
+  <!-- ── TAB 2: Faculty Allocation ── -->
+  <div class="step-panel" id="panel-2">
+    <div class="card p-4">
+      <div class="sec-label">Faculty Allocation</div>
+      <p class="text-muted" style="font-size:13px">
+        For each course, assign faculty members and how many sessions each teaches.
+        Faculty are referenced by index (0-based). Theory sessions must sum to the credit count.
+      </p>
+      <div id="alloc-container"></div>
+      <div class="alert alert-info py-2 px-3 mt-3" style="font-size:12px">
+        💡 Click <strong>"Refresh from Courses"</strong> if you added/removed courses on the previous tab.
+      </div>
+      <button class="btn btn-outline-secondary btn-sm mt-2" onclick="refreshAlloc()">↻ Refresh from Courses</button>
+    </div>
+  </div>
+
+  <!-- ── TAB 3: Rooms & Solver ── -->
+  <div class="step-panel" id="panel-3">
+    <div class="card p-4 mb-4">
+      <div class="sec-label">🏫 Rooms & Schedule</div>
+      <div class="row g-3">
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Theory Classrooms</label>
+          <input type="number" id="n_classrooms" class="form-control" value="4" min="1" max="30"/>
+          <div class="form-text">e.g. R-301, R-302… (theory sessions only)</div>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Lab Rooms</label>
+          <input type="number" id="n_labs" class="form-control" value="6" min="1" max="30"/>
+          <div class="form-text">e.g. Lab-1, Lab-2… (lab sessions only)</div>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">Random Seed</label>
+          <input type="number" id="seed" class="form-control" value="42"/>
+          <div class="form-text">Same seed → reproducible output</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4 mb-4">
+      <div class="sec-label">🧬 NSGA-II Parameters</div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Population Size</label>
+        <div class="range-row">
+          <span style="font-size:11px;color:#888">20</span>
+          <input type="range" id="pop_size" class="form-range flex-grow-1" min="20" max="200" step="10" value="80"
+                 oninput="document.getElementById('pop_val').textContent=this.value"/>
+          <span style="font-size:11px;color:#888">200</span>
+          <span class="range-val" id="pop_val">80</span>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Generations</label>
+        <div class="range-row">
+          <span style="font-size:11px;color:#888">20</span>
+          <input type="range" id="n_gen" class="form-range flex-grow-1" min="20" max="300" step="10" value="100"
+                 oninput="document.getElementById('gen_val').textContent=this.value"/>
+          <span style="font-size:11px;color:#888">300</span>
+          <span class="range-val" id="gen_val">100</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="sec-label">⚖️ Objective Weights</div>
+      <div class="row g-3">
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">w1 – Makespan</label>
+          <input type="number" id="w1" class="form-control" value="0.4" min="0" max="1" step="0.05"/>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">w2 – Student Load</label>
+          <input type="number" id="w2" class="form-control" value="0.3" min="0" max="1" step="0.05"/>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-semibold">w3 – Room Load</label>
+          <input type="number" id="w3" class="form-control" value="0.3" min="0" max="1" step="0.05"/>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Run Solver ── -->
+  <div class="card p-4 mt-4">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+      <div>
+        <div class="fw-bold" style="font-size:15px">Ready to Schedule?</div>
+        <div class="text-muted" style="font-size:13px" id="summary-line">Fill in all tabs, then click Run.</div>
+      </div>
+      <button class="btn-solve" id="solveBtn" onclick="startSolve()">▶ Run NSGA-II Solver</button>
+    </div>
+
+    <div id="status-box" class="mt-3">
+      <div id="status-running" class="alert alert-warning d-flex align-items-center gap-2 py-2" style="display:none!important">
+        <span class="spinner-border text-warning"></span>
+        <span id="status-text">Initialising…</span>
+      </div>
+      <div id="status-done" class="alert alert-success py-2" style="display:none">
+        ✅ Solved! Redirecting to results…
+      </div>
+      <div id="status-error" class="alert alert-danger py-2" style="display:none">
+        ❌ <span id="error-text">Error.</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let groups  = [];   // [{name}]
+let courses = [];   // [{code, type, credits, sg_index}]
+let alloc   = {};   // { course_index -> [{faculty_index, sessions}] }
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(n) {
+  document.querySelectorAll('.step-tab').forEach((t,i)   => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.step-panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n === 2) refreshAlloc();
+  updateSummary();
+}
+
+// ── Student Groups ─────────────────────────────────────────────────────────
+function addGroup(name='') {
+  groups.push({name});
+  renderGroups();
+}
+function removeGroup(i) {
+  groups.splice(i,1);
+  renderGroups();
+  renderCourses();
+}
+function renderGroups() {
+  const tbody = document.getElementById('sg-body');
+  tbody.innerHTML = groups.map((g,i) => `
+    <tr>
+      <td style="width:40px;color:#888">${i}</td>
+      <td><input value="${g.name}" oninput="groups[${i}].name=this.value;renderCourses()" placeholder="e.g. 1st Year IPE"/></td>
+      <td style="width:40px"><button class="btn-del" onclick="removeGroup(${i})">×</button></td>
+    </tr>`).join('');
+  updateSummary();
+}
+
+// ── Courses ────────────────────────────────────────────────────────────────
+function addCourse(code='', type='theory', credits=3, sg=0) {
+  courses.push({code, type, credits, sg});
+  renderCourses();
+}
+function removeCourse(i) {
+  courses.splice(i,1);
+  delete alloc[i];
+  // Re-key alloc
+  const newAlloc = {};
+  Object.keys(alloc).forEach(k => {
+    const ki = parseInt(k);
+    if (ki > i) newAlloc[ki-1] = alloc[k];
+    else if (ki < i) newAlloc[ki] = alloc[k];
+  });
+  alloc = newAlloc;
+  renderCourses();
+}
+function renderCourses() {
+  const sgOpts = groups.map((g,i) => `<option value="${i}">${i}: ${g.name||'Group '+i}</option>`).join('');
+  const tbody = document.getElementById('course-body');
+  tbody.innerHTML = courses.map((c,i) => `
+    <tr>
+      <td style="width:36px;color:#888">${i}</td>
+      <td><input value="${c.code}" oninput="courses[${i}].code=this.value" placeholder="e.g. IPE 2101"/></td>
+      <td style="width:100px">
+        <select onchange="courses[${i}].type=this.value">
+          <option value="theory" ${c.type==='theory'?'selected':''}>Theory</option>
+          <option value="lab"    ${c.type==='lab'?'selected':''}>Lab</option>
+        </select>
+      </td>
+      <td style="width:80px">
+        <input type="number" value="${c.credits}" min="1" max="6" step="0.5"
+               oninput="courses[${i}].credits=parseFloat(this.value)"/>
+      </td>
+      <td><select onchange="courses[${i}].sg=parseInt(this.value)">${sgOpts}</select></td>
+      <td style="width:40px"><button class="btn-del" onclick="removeCourse(${i})">×</button></td>
+    </tr>`).join('');
+  // Keep selects in sync
+  courses.forEach((c,i) => {
+    const row = tbody.rows[i];
+    if (row) {
+      row.cells[4].querySelector('select').value = c.sg;
+    }
+  });
+  updateSummary();
+}
+
+// ── Faculty Allocation ─────────────────────────────────────────────────────
+function refreshAlloc() {
+  const container = document.getElementById('alloc-container');
+  if (courses.length === 0) {
+    container.innerHTML = '<div class="text-muted" style="font-size:13px">No courses yet. Add courses in Tab ②.</div>';
+    return;
+  }
+  container.innerHTML = courses.map((c,ci) => {
+    if (!alloc[ci]) alloc[ci] = [];
+    const entries = alloc[ci];
+    const badges = entries.map((e,ei) => `
+      <span class="alloc-badge">
+        Fac&nbsp;<strong>${e.fi}</strong> × ${e.sessions} sessions
+        <span class="rm" onclick="removeAlloc(${ci},${ei})">×</span>
+      </span>`).join('');
+    const sgName = groups[c.sg]?.name || 'Group '+c.sg;
+    const typeLabel = c.type === 'theory' ? `Theory (${c.credits} sessions × 50 min)` : 'Lab (1 × 150 min)';
+    return `
+      <div class="mb-3 p-3" style="background:#fff;border-radius:10px;border:1px solid #e0e4f0">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+          <div>
+            <span class="fw-bold">${c.code||'Course '+ci}</span>
+            <span class="ms-2 text-muted" style="font-size:12px">${typeLabel} · ${sgName}</span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <input type="number" id="fi-${ci}" class="form-control form-control-sm" style="width:80px" placeholder="Fac #" min="0"/>
+            <input type="number" id="fs-${ci}" class="form-control form-control-sm" style="width:80px" placeholder="Sessions" min="1" max="6" value="1"/>
+            <button class="btn btn-sm btn-outline-primary" onclick="addAlloc(${ci})">+ Add</button>
+          </div>
+        </div>
+        <div id="alloc-badges-${ci}">${badges || '<span class="text-muted" style="font-size:12px">No faculty assigned yet</span>'}</div>
+      </div>`;
+  }).join('');
+}
+
+function addAlloc(ci) {
+  const fi  = parseInt(document.getElementById(`fi-${ci}`).value);
+  const ses = parseInt(document.getElementById(`fs-${ci}`).value);
+  if (isNaN(fi) || fi < 0) { alert('Enter a valid faculty index (0-based)'); return; }
+  if (!ses || ses < 1)      { alert('Enter sessions ≥ 1'); return; }
+  if (!alloc[ci]) alloc[ci] = [];
+  alloc[ci].push({fi, sessions: ses});
+  refreshAlloc();
+}
+function removeAlloc(ci, ei) {
+  alloc[ci].splice(ei, 1);
+  refreshAlloc();
+}
+
+// ── Summary ────────────────────────────────────────────────────────────────
+function updateSummary() {
+  const nSG  = groups.length;
+  const nC   = courses.length;
+  const nT   = courses.filter(c=>c.type==='theory').length;
+  const nL   = courses.filter(c=>c.type==='lab').length;
+  document.getElementById('summary-line').textContent =
+    `${nSG} groups · ${nC} courses (${nT} theory, ${nL} lab)`;
+}
+
+// ── Preset: RUET IPE ──────────────────────────────────────────────────────
+function loadPreset() {
+  groups = [
+    {name:'1st Year'},{name:'2nd Year'},{name:'3rd Year'},{name:'4th Year'}
+  ];
+  courses = [
+    {code:'Chem 1123',type:'theory',credits:3,sg:0},{code:'Phy 1123',type:'theory',credits:3,sg:0},
+    {code:'Math 1123',type:'theory',credits:4,sg:0},{code:'Hum 1123',type:'theory',credits:3,sg:0},
+    {code:'EEE 1183', type:'theory',credits:3,sg:0},{code:'IPE 1100',type:'lab',credits:1.5,sg:0},
+    {code:'Chem 1124',type:'lab',credits:1.5,sg:0},{code:'Phy 1124',type:'lab',credits:1.5,sg:0},
+    {code:'EEE 1184', type:'lab',credits:1.5,sg:0},
+    {code:'IPE 2101', type:'theory',credits:3,sg:1},{code:'IPE 2113',type:'theory',credits:4,sg:1},
+    {code:'Math 2123',type:'theory',credits:4,sg:1},{code:'Hum 2123',type:'theory',credits:3,sg:1},
+    {code:'ME 2161',  type:'theory',credits:4,sg:1},{code:'IPES 2102',type:'lab',credits:1.5,sg:1},
+    {code:'IPE 2114', type:'lab',credits:1.5,sg:1},{code:'ME 2152',type:'lab',credits:1.5,sg:1},
+    {code:'IPE 3101', type:'theory',credits:3,sg:2},{code:'IPE 3103',type:'theory',credits:4,sg:2},
+    {code:'IPE 3105', type:'theory',credits:3,sg:2},{code:'IPE 3111',type:'theory',credits:3,sg:2},
+    {code:'IPE 3121', type:'theory',credits:3,sg:2},{code:'IPE 3106',type:'lab',credits:1.5,sg:2},
+    {code:'IPE 3112', type:'lab',credits:1.5,sg:2},{code:'IPE 3122',type:'lab',credits:1.5,sg:2},
+    {code:'IPE 4100', type:'lab',credits:1.5,sg:3},{code:'IPE 4101',type:'theory',credits:3,sg:3},
+    {code:'IPE 4103', type:'theory',credits:3,sg:3},{code:'IPE 4121',type:'theory',credits:3,sg:3},
+    {code:'IPE 4123', type:'theory',credits:3,sg:3},{code:'IPE 4131',type:'theory',credits:3,sg:3},
+    {code:'IPE 4104', type:'lab',credits:1.5,sg:3},{code:'IPE 4122',type:'lab',credits:1.5,sg:3},
+    {code:'IPE 4124', type:'lab',credits:1.5,sg:3},{code:'IPE 4128',type:'lab',credits:1.5,sg:3},
+  ];
+  alloc = {
+    0:  [{fi:23,sessions:2},{fi:24,sessions:1}],
+    1:  [{fi:25,sessions:2},{fi:11,sessions:1}],
+    2:  [{fi:17,sessions:2},{fi:20,sessions:2}],
+    3:  [{fi:26,sessions:2},{fi:7, sessions:1}],
+    4:  [{fi:24,sessions:2},{fi:27,sessions:1}],
+    5:  [{fi:5, sessions:1}],
+    6:  [{fi:23,sessions:1}],
+    7:  [{fi:25,sessions:1}],
+    8:  [{fi:24,sessions:1}],
+    9:  [{fi:16,sessions:2},{fi:17,sessions:1}],
+    10: [{fi:18,sessions:2},{fi:19,sessions:2}],
+    11: [{fi:20,sessions:2},{fi:17,sessions:2}],
+    12: [{fi:7, sessions:2},{fi:26,sessions:1}],
+    13: [{fi:21,sessions:2},{fi:22,sessions:2}],
+    14: [{fi:18,sessions:1}],
+    15: [{fi:19,sessions:1}],
+    16: [{fi:22,sessions:1}],
+    17: [{fi:11,sessions:2},{fi:12,sessions:1}],
+    18: [{fi:10,sessions:2},{fi:13,sessions:2}],
+    19: [{fi:14,sessions:2},{fi:5, sessions:1}],
+    20: [{fi:12,sessions:2},{fi:11,sessions:1}],
+    21: [{fi:13,sessions:2},{fi:14,sessions:1}],
+    22: [{fi:15,sessions:1}],
+    23: [{fi:12,sessions:1}],
+    24: [{fi:11,sessions:1}],
+    25: [{fi:10,sessions:1}],
+    26: [{fi:0, sessions:2},{fi:8, sessions:1}],
+    27: [{fi:1, sessions:2},{fi:2, sessions:1}],
+    28: [{fi:3, sessions:2},{fi:4, sessions:1}],
+    29: [{fi:5, sessions:2},{fi:0, sessions:1}],
+    30: [{fi:6, sessions:2},{fi:7, sessions:1}],
+    31: [{fi:10,sessions:1}],
+    32: [{fi:1, sessions:1}],
+    33: [{fi:4, sessions:1}],
+    34: [{fi:10,sessions:1}],
+  };
+  renderGroups();
+  renderCourses();
+  updateSummary();
+  alert('✅ RUET IPE sample data loaded! You can review and edit each tab.');
+}
+
+function clearAll() {
+  if (!confirm('Clear all data?')) return;
+  groups=[]; courses=[]; alloc={};
+  renderGroups(); renderCourses(); refreshAlloc(); updateSummary();
+}
+
+// ── Build payload ──────────────────────────────────────────────────────────
+function buildPayload() {
+  // Build instances from courses + alloc
+  const instances = [];
+  courses.forEach((c, ci) => {
+    const entries = alloc[ci] || [];
+    if (c.type === 'theory') {
+      // Each (faculty, sessions) entry → that many 50-min sessions
+      entries.forEach(e => {
+        for (let s = 0; s < e.sessions; s++) {
+          instances.push({
+            course_id:     ci,
+            course_code:   c.code,
+            course_type:   'theory',
+            duration:      50,
+            student_group: c.sg,
+            faculty:       e.fi,
+          });
+        }
+      });
+      // If no alloc assigned, still add sessions with faculty=-1
+      if (entries.length === 0) {
+        const n = Math.round(c.credits);
+        for (let s = 0; s < n; s++) {
+          instances.push({course_id:ci, course_code:c.code, course_type:'theory',
+                          duration:50, student_group:c.sg, faculty:-1});
+        }
+      }
+    } else {
+      // Lab: 1 × 150 min
+      const fi = entries[0]?.fi ?? -1;
+      instances.push({
+        course_id:     ci,
+        course_code:   c.code,
+        course_type:   'lab',
+        duration:      150,
+        student_group: c.sg,
+        faculty:       fi,
+      });
+    }
+  });
+
+  return {
+    groups:      groups.map(g => g.name),
+    courses:     courses.map((c,i) => ({...c, id:i})),
+    instances,
+    n_classrooms: parseInt(document.getElementById('n_classrooms').value),
+    n_labs:       parseInt(document.getElementById('n_labs').value),
+    n_student_groups: groups.length,
+    seed:         parseInt(document.getElementById('seed').value),
+    pop_size:     parseInt(document.getElementById('pop_size').value),
+    n_gen:        parseInt(document.getElementById('n_gen').value),
+    w1:           parseFloat(document.getElementById('w1').value),
+    w2:           parseFloat(document.getElementById('w2').value),
+    w3:           parseFloat(document.getElementById('w3').value),
+    P:            0.02,
+  };
+}
+
+// ── Solve ──────────────────────────────────────────────────────────────────
+function showStatus(type, msg) {
+  document.getElementById('status-box').style.display = 'block';
+  document.getElementById('status-running').style.display = type==='running' ? 'flex' : 'none';
+  document.getElementById('status-done').style.display    = type==='done'    ? 'block': 'none';
+  document.getElementById('status-error').style.display   = type==='error'   ? 'block': 'none';
+  if (type==='running') document.getElementById('status-text').textContent = msg;
+  if (type==='error')   document.getElementById('error-text').textContent  = msg;
+}
+
+let pollTimer = null;
+async function startSolve() {
+  if (courses.length === 0) { alert('Add at least one course first.'); return; }
+  if (groups.length  === 0) { alert('Add at least one student group first.'); return; }
+
+  const btn = document.getElementById('solveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Starting…';
+  showStatus('running', 'Sending data to server…');
+
+  try {
+    const payload = buildPayload();
+    const resp = await fetch('/solve', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Server error');
+
+    showStatus('running', 'NSGA-II running… please wait ⏱');
+    btn.textContent = '⏳ Solving…';
+    pollTimer = setInterval(async () => {
+      try {
+        const r = await fetch('/status/' + data.job_id);
+        const s = await r.json();
+        if (s.status === 'done') {
+          clearInterval(pollTimer);
+          showStatus('done','');
+          sessionStorage.setItem('job_id', data.job_id);
+          setTimeout(() => { window.location.href = '/results-page?job=' + data.job_id; }, 800);
+        } else if (s.status === 'error') {
+          clearInterval(pollTimer);
+          showStatus('error', s.error || 'Unknown error');
+          btn.disabled=false; btn.textContent='▶ Run NSGA-II Solver';
+        }
+      } catch(e) { clearInterval(pollTimer); showStatus('error','Lost connection.'); }
+    }, 2000);
+
+  } catch(err) {
+    showStatus('error', err.message);
+    btn.disabled=false; btn.textContent='▶ Run NSGA-II Solver';
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderGroups();
+renderCourses();
+updateSummary();
+</script>
+</body>
+</html>

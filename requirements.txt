@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+pymoo
+openpyxl
+reportlab

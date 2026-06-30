@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Course Scheduler – Pareto Results</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    body { background: #f4f6fb; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); }
+    .header-bar { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; padding: 20px 0; margin-bottom: 28px; }
+    .header-bar h1 { font-size: 1.4rem; font-weight: 600; margin: 0; }
+    .section-title { font-size: 13px; font-weight: 600; color: #6c757d; letter-spacing:.07em; text-transform:uppercase; margin-bottom:12px; }
+    .sol-row { cursor: pointer; transition: background .15s; }
+    .sol-row:hover { background: #f0f4ff !important; }
+    .sol-row.selected { background: #e8f0fe !important; font-weight: 500; }
+    .badge-theory { background: #dbeafe; color: #1e40af; }
+    .badge-lab    { background: #fce7f3; color: #9d174d; }
+    .obj-chip { display:inline-block; font-size:11px; padding:2px 8px; border-radius:10px; margin-right:4px; }
+    #loading { text-align:center; padding:60px; color:#6c757d; }
+  </style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div class="container d-flex align-items-center justify-content-between">
+    <h1>📊 Pareto Front Results</h1>
+    <a href="/" class="btn btn-outline-light btn-sm">← New Schedule</a>
+  </div>
+</div>
+
+<div class="container pb-5">
+
+  <div id="loading">
+    <div class="spinner-border text-secondary mb-3"></div>
+    <div>Loading results…</div>
+  </div>
+
+  <div id="main-content" style="display:none">
+
+    <!-- Stats row -->
+    <div class="row g-3 mb-4" id="stats-row"></div>
+
+    <div class="row g-4">
+      <!-- Pareto scatter chart -->
+      <div class="col-lg-7">
+        <div class="card p-4">
+          <div class="section-title">Pareto Front – Makespan vs Student Workload</div>
+          <div id="pareto-chart" style="height:360px"></div>
+          <div class="mt-2" style="font-size:12px;color:#888">
+            Each point is one non-dominated solution. Click a point or a row in the table to select it.
+          </div>
+        </div>
+      </div>
+
+      <!-- Solutions table -->
+      <div class="col-lg-5">
+        <div class="card p-4" style="max-height:460px;overflow-y:auto">
+          <div class="section-title">All Pareto Solutions</div>
+          <table class="table table-sm table-hover mb-0" id="solutions-table">
+            <thead class="table-light" style="font-size:12px">
+              <tr>
+                <th>#</th>
+                <th>Makespan</th>
+                <th>Stu. Load</th>
+                <th>Room Load</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="solutions-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- View routine button -->
+    <div class="mt-4 text-center">
+      <button id="view-btn" class="btn btn-dark btn-lg px-5 fw-semibold" onclick="viewRoutine()" disabled>
+        📅 View Timetable for Selected Solution
+      </button>
+      <div class="mt-2" style="font-size:13px;color:#888">Select a solution above first</div>
+    </div>
+
+  </div><!-- /main-content -->
+</div>
+
+<script>
+let allResults   = null;
+let selectedIdx  = null;
+let jobId        = null;
+
+// ── Load results on page load ─────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  const params = new URLSearchParams(window.location.search);
+  jobId = params.get('job') || sessionStorage.getItem('job_id');
+  if (!jobId) {
+    document.getElementById('loading').innerHTML = '<div class="alert alert-danger">No job ID found. <a href="/">Go back</a></div>';
+    return;
+  }
+  try {
+    const resp = await fetch('/results/' + jobId);
+    if (!resp.ok) throw new Error('Results not ready');
+    allResults = await resp.json();
+    renderPage();
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="alert alert-danger">Error loading results: ${err.message}. <a href="/">Go back</a></div>`;
+  }
+});
+
+function renderPage() {
+  document.getElementById('loading').style.display      = 'none';
+  document.getElementById('main-content').style.display = 'block';
+
+  renderStats();
+  renderTable();
+  renderChart();
+}
+
+function renderStats() {
+  const r    = allResults;
+  const best = r.pareto_solutions[0];
+  const stats = [
+    { label: 'Pareto Solutions',   value: r.pareto_solutions.length, color: '#1a1a2e' },
+    { label: 'Solve Time',         value: r.solve_time + 's',        color: '#16213e' },
+    { label: 'Total Instances',    value: r.n_instances,             color: '#0f3460' },
+    { label: 'Best Makespan',      value: best.C_max + ' min',       color: '#533483' },
+  ];
+  document.getElementById('stats-row').innerHTML = stats.map(s => `
+    <div class="col-6 col-md-3">
+      <div class="card p-3 text-center">
+        <div style="font-size:22px;font-weight:700;color:${s.color}">${s.value}</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">${s.label}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderTable() {
+  const tbody = document.getElementById('solutions-body');
+  tbody.innerHTML = allResults.pareto_solutions.map((s, i) => `
+    <tr class="sol-row" id="row-${i}" onclick="selectSolution(${i})">
+      <td><span class="badge bg-secondary">${i + 1}</span></td>
+      <td>${s.C_max}</td>
+      <td>${s.W_max}</td>
+      <td>${s.U_max}</td>
+      <td><button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:11px">Select</button></td>
+    </tr>`).join('');
+}
+
+function renderChart() {
+  const sols = allResults.pareto_solutions;
+  const x    = sols.map(s => s.C_max);
+  const y    = sols.map(s => s.W_max);
+  const text = sols.map((s, i) => `Solution ${i+1}<br>Makespan: ${s.C_max}<br>Stu.Load: ${s.W_max}<br>Room Load: ${s.U_max}`);
+
+  Plotly.newPlot('pareto-chart', [{
+    x, y, text,
+    mode: 'markers',
+    type: 'scatter',
+    hovertemplate: '%{text}<extra></extra>',
+    marker: {
+      size: 12,
+      color: sols.map(s => s.U_max),
+      colorscale: 'Viridis',
+      showscale: true,
+      colorbar: { title: 'Room Load', thickness: 12, len: 0.8 },
+    },
+  }], {
+    margin: { t: 10, r: 80, b: 50, l: 55 },
+    xaxis: { title: 'Makespan (min)' },
+    yaxis: { title: 'Student Workload (min)' },
+    paper_bgcolor: 'transparent',
+    plot_bgcolor:  'transparent',
+  }, { responsive: true });
+
+  document.getElementById('pareto-chart').on('plotly_click', data => {
+    const idx = allResults.pareto_solutions.findIndex(
+      s => s.C_max === data.points[0].x && s.W_max === data.points[0].y
+    );
+    if (idx >= 0) selectSolution(idx);
+  });
+}
+
+function selectSolution(idx) {
+  selectedIdx = idx;
+  document.querySelectorAll('.sol-row').forEach(r => r.classList.remove('selected'));
+  document.getElementById('row-' + idx).classList.add('selected');
+  document.getElementById('view-btn').disabled = false;
+
+  // Highlight point on chart
+  const sols = allResults.pareto_solutions;
+  Plotly.restyle('pareto-chart', {
+    'marker.size': [sols.map((_, i) => i === idx ? 18 : 12)],
+    'marker.line': [{ width: sols.map((_, i) => i === idx ? 2 : 0), color: '#ff4444' }],
+  });
+}
+
+function viewRoutine() {
+  if (selectedIdx === null) return;
+  sessionStorage.setItem('job_id', jobId);
+  sessionStorage.setItem('solution_index', selectedIdx);
+  window.location.href = '/routine-page?job=' + jobId + '&sol=' + selectedIdx;
+}
+</script>
+</body>
+</html>

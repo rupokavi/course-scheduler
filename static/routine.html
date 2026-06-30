@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Class Routine – IPE RUET</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    body { background: #f0f2f8; font-size: 13px; }
+
+    /* ── Header bar ── */
+    .header-bar {
+      background: linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
+      color:#fff; padding:16px 0;
+    }
+    .header-bar h1 { font-size:1.3rem; font-weight:700; margin:0; }
+
+    /* ── Routine table wrapper ── */
+    .routine-wrap {
+      overflow-x: auto;
+      margin: 24px 0;
+      border-radius: 10px;
+      box-shadow: 0 2px 18px rgba(0,0,0,.10);
+      background: #fff;
+    }
+
+    /* ── Main table ── */
+    #rt {
+      border-collapse: collapse;
+      min-width: 1200px;
+      width: 100%;
+    }
+    #rt th, #rt td {
+      border: 1px solid #b0b8cc;
+      padding: 0;
+      vertical-align: middle;
+      text-align: center;
+    }
+
+    /* University header rows */
+    .hdr-uni {
+      background: #1F3864;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 10px;
+      letter-spacing: .03em;
+    }
+    .hdr-uni2 {
+      background: #2E5090;
+      color: #fff;
+      font-size: 12px;
+      padding: 4px 8px;
+    }
+
+    /* Day header */
+    .hdr-day {
+      background: #1F3864;
+      color: #FFD700;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 6px 4px;
+      letter-spacing: .05em;
+    }
+    /* Period row */
+    .hdr-period {
+      background: #D6DCE4;
+      color: #1a1a2e;
+      font-weight: 700;
+      font-size: 11px;
+      padding: 4px 3px;
+    }
+    /* Time row */
+    .hdr-time {
+      background: #E9EDF4;
+      color: #444;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 4px 2px;
+      white-space: nowrap;
+    }
+
+    /* Break / Recess columns */
+    .col-break  { background: #BDD7EE; font-size:10px; font-weight:700; color:#1F3864; width:36px; }
+    .col-recess { background: #9DC3E6; font-size:10px; font-weight:700; color:#1F3864; width:44px; }
+
+    /* Group label column */
+    .lbl-4th { background:#FFF2CC; color:#7F6000; font-weight:700; font-size:12px; padding:6px 8px; min-width:72px; }
+    .lbl-3rd { background:#E2EFDA; color:#375623; font-weight:700; font-size:12px; padding:6px 8px; }
+    .lbl-2nd { background:#DEEAF1; color:#1F3864; font-weight:700; font-size:12px; padding:6px 8px; }
+    .lbl-1st { background:#FCE4D6; color:#843C0C; font-weight:700; font-size:12px; padding:6px 8px; }
+    .lbl-sem  { background:#F2F2F2; color:#666;   font-size:10px; padding:4px 6px; }
+
+    /* Empty cell */
+    .cell-empty { background:#FAFBFF; min-width:72px; height:56px; }
+
+    /* Theory cell */
+    .cell-theory {
+      background: #EBF4FF;
+      min-width: 72px;
+      height: 56px;
+      padding: 3px 4px;
+      font-size: 11px;
+      line-height: 1.35;
+      vertical-align: middle;
+    }
+    .cell-theory .cname { font-weight:700; color:#1F3864; font-size:11px; }
+    .cell-theory .croom { color:#555; font-size:10px; }
+    .cell-theory .cfac  { color:#888; font-size:10px; font-style:italic; }
+
+    /* Lab cell */
+    .cell-lab {
+      background: #E2F0D9;
+      height: 56px;
+      padding: 3px 4px;
+      font-size: 11px;
+      line-height: 1.35;
+      vertical-align: middle;
+    }
+    .cell-lab .cname { font-weight:700; color:#375623; font-size:11px; }
+    .cell-lab .croom { color:#555; font-size:10px; }
+    .cell-lab .cfac  { color:#888; font-size:10px; font-style:italic; }
+
+    /* Legend */
+    .legend-box { display:inline-flex; align-items:center; gap:6px; font-size:12px; }
+    .leg-sq { width:14px; height:14px; border-radius:3px; border:1px solid #ccc; }
+
+    /* Print */
+    @media print {
+      body { background: #fff; font-size:10px; }
+      .no-print { display:none !important; }
+      .routine-wrap { box-shadow:none; margin:0; }
+      #rt { min-width: unset; }
+    }
+
+    #loading { text-align:center; padding:60px; color:#6c757d; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header-bar">
+  <div class="container d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1>📅 Class Routine</h1>
+    <div class="d-flex gap-2 no-print">
+      <a id="back-btn" href="/results-page" class="btn btn-outline-light btn-sm">← Back to Results</a>
+      <button class="btn btn-outline-light btn-sm" onclick="window.print()">🖨 Print</button>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pb-5">
+
+  <!-- Info chips -->
+  <div id="info-bar" class="d-flex gap-2 flex-wrap mt-3 mb-2 no-print"></div>
+
+  <!-- Legend -->
+  <div class="d-flex gap-4 mb-3 flex-wrap no-print" style="font-size:12px">
+    <span class="legend-box"><span class="leg-sq" style="background:#EBF4FF"></span> Theory (50 min)</span>
+    <span class="legend-box"><span class="leg-sq" style="background:#E2F0D9"></span> Lab (150 min)</span>
+    <span class="legend-box"><span class="leg-sq" style="background:#BDD7EE"></span> Break (10:30–10:50)</span>
+    <span class="legend-box"><span class="leg-sq" style="background:#9DC3E6"></span> Recess (1:20–2:30)</span>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner-border text-secondary mb-3"></div>
+    <div>Loading timetable…</div>
+  </div>
+
+  <!-- Routine table -->
+  <div class="routine-wrap" id="routine-wrap" style="display:none">
+    <table id="rt"></table>
+  </div>
+
+  <!-- Unscheduled warning -->
+  <div id="unscheduled-box" class="alert alert-warning mt-3" style="display:none">
+    ⚠️ <strong>Unscheduled sessions:</strong> <span id="unscheduled-list"></span>
+    <span style="font-size:12px"> — try increasing generations or classrooms.</span>
+  </div>
+
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const DAYS = ['Saturday','Sunday','Monday','Tuesday','Wednesday'];
+
+// Column layout per day: 11 columns (incl break + recess)
+// Each col: { type: 'period'|'break'|'recess', period: 1-9, time, start_min }
+const DAY_COLS = [
+  {type:'period', period:1, time:'8:00–8:50',   start_min:0},
+  {type:'period', period:2, time:'8:50–9:40',   start_min:50},
+  {type:'period', period:3, time:'9:40–10:30',  start_min:100},
+  {type:'break',  period:null, time:'10:30\n10:50', start_min:150},
+  {type:'period', period:4, time:'10:50–11:40', start_min:170},
+  {type:'period', period:5, time:'11:40–12:30', start_min:220},
+  {type:'period', period:6, time:'12:30–1:20',  start_min:270},
+  {type:'recess', period:null, time:'1:20\n2:30',  start_min:320},
+  {type:'period', period:7, time:'2:30–3:20',   start_min:390},
+  {type:'period', period:8, time:'3:20–4:10',   start_min:440},
+  {type:'period', period:9, time:'4:10–5:00',   start_min:490},
+];
+const NCOLS = DAY_COLS.length; // 11
+
+// Map start_min → column index within a day
+const MIN_TO_COL = {};
+DAY_COLS.forEach((c,i) => { if(c.type==='period') MIN_TO_COL[c.start_min] = i; });
+
+// Group label CSS classes (cycle if >4 groups)
+const GRP_CLASSES = ['lbl-4th','lbl-3rd','lbl-2nd','lbl-1st'];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let routineData = null;
+let jobId = null, solIdx = null;
+
+// ── Load ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  const p = new URLSearchParams(window.location.search);
+  jobId  = p.get('job') || sessionStorage.getItem('job_id');
+  solIdx = p.get('sol') || sessionStorage.getItem('solution_index') || 0;
+  document.getElementById('back-btn').href = '/results-page?job=' + jobId;
+
+  if (!jobId) {
+    document.getElementById('loading').innerHTML =
+      '<div class="alert alert-danger">No job found. <a href="/">Go back</a></div>';
+    return;
+  }
+  try {
+    const resp = await fetch(`/routine/${jobId}/${solIdx}`);
+    if (!resp.ok) throw new Error('Could not load routine');
+    routineData = await resp.json();
+    renderPage();
+  } catch(err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="alert alert-danger">Error: ${err.message}. <a href="/">Go back</a></div>`;
+  }
+});
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderPage() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('routine-wrap').style.display = 'block';
+
+  renderInfoBar();
+  renderUnscheduled();
+  renderTable();
+}
+
+function renderInfoBar() {
+  const meta = routineData.meta;
+  const par  = routineData.pareto;
+  const chips = [
+    {label:'Solution',     value:`#${parseInt(solIdx)+1}`},
+    {label:'Makespan',     value:par.C_max+' min'},
+    {label:'Student Load', value:par.W_max+' min'},
+    {label:'Room Load',    value:par.U_max+' min'},
+    {label:'Sessions',     value:routineData.schedule.length},
+  ];
+  document.getElementById('info-bar').innerHTML = chips.map(c=>`
+    <span class="badge rounded-pill px-3 py-2"
+          style="background:#1a1a2e;color:#fff;font-size:12px;font-weight:500">
+      ${c.label}: <strong>${c.value}</strong>
+    </span>`).join('');
+}
+
+function renderUnscheduled() {
+  const bad = routineData.schedule.filter(e=>e.classroom===-1);
+  if (bad.length > 0) {
+    document.getElementById('unscheduled-box').style.display = 'block';
+    document.getElementById('unscheduled-list').textContent =
+      bad.map(e=>`${e.course_code||'Course '+e.course_id} (Session ${e.instance_id})`).join(', ');
+  }
+}
+
+function renderTable() {
+  const meta     = routineData.meta;
+  const schedule = routineData.schedule.filter(e=>e.classroom!==-1);
+  const groups   = meta.groups && meta.groups.length
+                   ? meta.groups
+                   : Array.from({length:meta.n_student_groups},(_,i)=>`Group ${i+1}`);
+  const nGroups  = groups.length;
+  const nDays    = meta.DAYS || 5;
+
+  // ── Build lookup: grid[group][day][col_index] = entry | 'SKIP'
+  // SKIP means the cell is covered by a colspan from the left
+  const grid = Array.from({length:nGroups}, ()=>
+    Array.from({length:nDays}, ()=>
+      Array(NCOLS).fill(null)
+    )
+  );
+
+  schedule.forEach(e => {
+    const g   = e.student_groups[0];
+    const d   = e.day;
+    const col = MIN_TO_COL[e.start_min];
+    if (col === undefined || g === undefined || g >= nGroups) return;
+    grid[g][d][col] = e;
+    // For labs (150 min = 3 periods): mark the next 2 PERIOD cols as SKIP.
+    // We must walk forward in DAY_COLS and skip over any break/recess cols.
+    if (e.course_type === 'lab') {
+      let periodsLeft = 2;   // need to mark 2 more period cols as SKIP
+      let ci = col + 1;
+      while (periodsLeft > 0 && ci < NCOLS) {
+        grid[g][d][ci] = 'SKIP';
+        if (DAY_COLS[ci].type === 'period') periodsLeft--;
+        ci++;
+      }
+    }
+  });
+
+  // ── Build HTML ───────────────────────────────────────────────────────────
+  let html = '';
+
+  // Row 1: University name
+  html += `<tr>
+    <td colspan="${2 + nDays*NCOLS}" class="hdr-uni" style="font-size:14px;padding:8px 12px">
+      Heaven's Light Is Our Guide<br>
+      <span style="font-size:12px;font-weight:400">Rajshahi University of Engineering &amp; Technology</span><br>
+      <span style="font-size:11px;font-weight:400">Department of Industrial &amp; Production Engineering</span>
+    </td>
+  </tr>`;
+
+  // Row 2: "CLASS ROUTINE" title
+  html += `<tr>
+    <td colspan="${2 + nDays*NCOLS}" class="hdr-uni"
+        style="font-size:15px;font-weight:700;letter-spacing:.08em;padding:6px;color:#FFD700">
+      CLASS ROUTINE
+    </td>
+  </tr>`;
+
+  // Row 3: Day headers
+  html += '<tr>';
+  html += `<th colspan="2" class="hdr-day" style="min-width:100px">Day</th>`;
+  for (let d = 0; d < nDays; d++) {
+    html += `<th colspan="${NCOLS}" class="hdr-day">${DAYS[d]}</th>`;
+  }
+  html += '</tr>';
+
+  // Row 4: Period numbers
+  html += '<tr>';
+  html += `<th colspan="2" class="hdr-period">Period</th>`;
+  for (let d = 0; d < nDays; d++) {
+    DAY_COLS.forEach(c => {
+      if (c.type==='break')  html += `<th class="hdr-period col-break">Break</th>`;
+      else if(c.type==='recess') html += `<th class="hdr-period col-recess">Recess</th>`;
+      else html += `<th class="hdr-period">${c.period}</th>`;
+    });
+  }
+  html += '</tr>';
+
+  // Row 5: Class times
+  html += '<tr>';
+  html += `<th colspan="2" class="hdr-time">Class Time</th>`;
+  for (let d = 0; d < nDays; d++) {
+    DAY_COLS.forEach(c => {
+      const cls = c.type==='break' ? 'col-break' : c.type==='recess' ? 'col-recess' : '';
+      html += `<th class="hdr-time ${cls}" style="white-space:pre-line">${c.time}</th>`;
+    });
+  }
+  html += '</tr>';
+
+  // Data rows: one per student group
+  for (let g = 0; g < nGroups; g++) {
+    const lblCls = GRP_CLASSES[g % GRP_CLASSES.length];
+    html += '<tr>';
+    html += `<td class="${lblCls}">${groups[g]}</td>`;
+    html += `<td class="lbl-sem">Odd<br>Semester</td>`;
+
+    for (let d = 0; d < nDays; d++) {
+      for (let ci = 0; ci < NCOLS; ci++) {
+        const col  = DAY_COLS[ci];
+        const cell = grid[g][d][ci];
+
+        // Covered by a lab colspan (period OR break/recess col absorbed into lab)
+        if (cell === 'SKIP') continue;
+
+        // Break / Recess columns (only if NOT swallowed by a lab)
+        if (col.type === 'break') {
+          html += `<td class="col-break" style="writing-mode:vertical-rl;font-size:9px;padding:2px">BREAK</td>`;
+          continue;
+        }
+        if (col.type === 'recess') {
+          html += `<td class="col-recess" style="writing-mode:vertical-rl;font-size:9px;padding:2px">RECESS</td>`;
+          continue;
+        }
+
+        // Empty
+        if (!cell) {
+          html += `<td class="cell-empty"></td>`;
+          continue;
+        }
+
+        // Class entry
+        const isLab = cell.course_type === 'lab';
+        const code  = cell.course_code || `C${cell.course_id}`;
+        const room  = cell.room_label || (isLab
+          ? `Lab-${cell.classroom+1}`
+          : `R-${String(cell.classroom+1).padStart(3,'0')}`);
+        const fac   = `F${cell.faculty>=0 ? cell.faculty : '?'}`;
+        const cls   = isLab ? 'cell-lab' : 'cell-theory';
+
+        // Compute visual colspan: for labs walk forward counting cols
+        // until we've covered 3 period cols (including start col),
+        // absorbing any break/recess cols in between.
+        let visualSpan = 1;
+        if (isLab) {
+          let periodsFound = 1;   // the start col itself
+          let look = ci + 1;
+          while (periodsFound < 3 && look < NCOLS) {
+            visualSpan++;
+            if (DAY_COLS[look].type === 'period') periodsFound++;
+            look++;
+          }
+        }
+
+        html += `<td colspan="${visualSpan}" class="${cls}">
+          <div class="cname">${code}</div>
+          <div class="croom">${room}</div>
+          <div class="cfac">${fac}</div>
+        </td>`;
+      }
+    }
+    html += '</tr>';
+  }
+
+  document.getElementById('rt').innerHTML = html;
+}
+</script>
+</body>
+</html>
