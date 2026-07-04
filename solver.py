@@ -69,6 +69,13 @@ def build_instance(inp: SchedulerInput) -> dict:
     # index n_classrooms..(n_classrooms+n_labs-1) → lab rooms
     n_rooms_total = n_classrooms + n_labs
 
+    # Constraint 18 — Daily Primary Classroom: P_s per student group.
+    # -1 = no home room configured for that group (fully flexible, legacy behaviour).
+    home_classroom_of_group = [-1] * n_groups
+    for s, p in enumerate(inp.home_classrooms):
+        if s < n_groups and 0 <= p < n_classrooms:
+            home_classroom_of_group[s] = p
+
     return dict(
         n_instances         = n_instances,
         n_classrooms        = n_classrooms,
@@ -91,6 +98,7 @@ def build_instance(inp: SchedulerInput) -> dict:
         THEORY_RESTRICT     = THEORY_RESTRICT,
         L_THEORY_SLOT       = L_THEORY_SLOT,
         L_LAB_SLOT          = L_LAB_SLOT,
+        home_classroom_of_group = home_classroom_of_group,
     )
 
 
@@ -128,6 +136,7 @@ def _greedy_decode(x: np.ndarray, inst: dict) -> dict:
     TR          = inst["THEORY_RESTRICT"]
     L_THEORY    = inst["L_THEORY_SLOT"]
     L_LAB       = inst["L_LAB_SLOT"]
+    home_of     = inst["home_classroom_of_group"]   # C18: P_s per student group, -1 = unconstrained
 
     SLOT   = 10
     slotsD = Td // SLOT
@@ -144,6 +153,7 @@ def _greedy_decode(x: np.ndarray, inst: dict) -> dict:
 
     lab_count        = [[0] * D for _ in range(S_count)]  # C17
     course_day_count = {}                                   # C18
+    theory_daily_count = [[0] * D for _ in range(S_count)]  # C18 (new): N_sd, theory sessions of group s placed so far on day d
 
     schedule = {}
 
@@ -178,12 +188,25 @@ def _greedy_decode(x: np.ndarray, inst: dict) -> dict:
         for dd in range(D):
             d = (p_day + dd) % D
 
-            # C18 — at most 1 session per course per day
+            # C18a — at most 1 session per course per day (pre-existing constraint)
             if course_day_count.get((cid, d), 0) >= 1:
                 continue
 
-            for rr in range(pool_size):
-                r_local    = (p_room + rr) % pool_size
+            # Constraint 18 — Daily Primary Classroom.
+            # For the first 3 theory sessions a group has on this day, the
+            # room is FORCED to that group's home classroom P_s. Only the
+            # 4th+ session that day is allowed to float to any theory room.
+            s0      = sis[0] if sis else -1
+            home_r  = home_of[s0] if (is_theory and 0 <= s0 < len(home_of)) else -1
+            n_sd    = theory_daily_count[s0][d] if (is_theory and 0 <= s0 < S_count) else 0
+            must_home = is_theory and home_r >= 0 and n_sd < 3
+
+            if must_home:
+                room_candidates = [home_r]                                   # locked to P_s
+            else:
+                room_candidates = [(p_room + rr) % pool_size for rr in range(pool_size)]  # free choice (incl. overflow)
+
+            for r_local in room_candidates:
                 r_combined = pool_offset + r_local   # index into room_busy
 
                 for t in allowed_slots:
@@ -220,6 +243,8 @@ def _greedy_decode(x: np.ndarray, inst: dict) -> dict:
                         stg_busy[s][d].append((t, te))
                         if not is_theory:
                             lab_count[s][d] += 1
+                        elif 0 <= s < S_count:
+                            theory_daily_count[s][d] += 1   # Constraint 18: N_sd
                     course_day_count[(cid, d)] = course_day_count.get((cid, d), 0) + 1
 
                     # Store combined room index so we can recover pool later
@@ -324,6 +349,34 @@ def _room_label(r_combined: int, n_classrooms: int) -> str:
         return f"Lab-{lab_idx}"                  # Lab-1, Lab-2, ...
 
 
+def _build_schedule_entries(x: np.ndarray, inst: dict) -> list:
+    """Decode one decision vector into a list of ScheduleEntry objects."""
+    schedule = _greedy_decode(x, inst)
+    SLOT     = 10
+    n_class  = inst["n_classrooms"]
+
+    entries = []
+    for i in range(inst["n_instances"]):
+        r, d, t, fi, sis = schedule.get(i, (-1, 0, 0, -1, []))
+        dur_i = inst["durations"][i]
+        entries.append(ScheduleEntry(
+            instance_id    = i,
+            course_id      = inst["course_of_instance"][i],
+            course_code    = inst["course_code_of"][i],
+            course_type    = inst["instance_type"][i],
+            classroom      = r,
+            room_label     = _room_label(r, n_class),
+            day            = d,
+            slot_start     = t,
+            start_min      = t * SLOT,
+            end_min        = t * SLOT + dur_i,
+            duration       = dur_i,
+            faculty        = fi,
+            student_groups = sis,
+        ))
+    return entries
+
+
 def solve(inp: SchedulerInput) -> SolverResult:
     if not PYMOO_AVAILABLE:
         return SolverResult(status="error: pymoo not installed")
@@ -349,6 +402,18 @@ def solve(inp: SchedulerInput) -> SolverResult:
     if res.F is None or res.X is None:
         return SolverResult(status="no_solution", solve_time=elapsed)
 
+    # Many DIFFERENT decision vectors (different room/day/time assignments)
+    # can land on the exact same objective values — NSGA2's
+    # eliminate_duplicates only dedupes in decision space, not objective
+    # space. Collapse those down to one representative per unique
+    # (C_max, W_max, U_max, Idle) tuple so the results table/chart aren't
+    # cluttered with dozens of visually-identical rows.
+    F_rounded = np.round(res.F, 1)
+    _, unique_idx = np.unique(F_rounded, axis=0, return_index=True)
+    unique_idx = np.sort(unique_idx)   # preserve original front ordering
+    F_unique = res.F[unique_idx]
+    X_unique = res.X[unique_idx]
+
     pareto_solutions = [
         ParetoSolution(
             index = idx,
@@ -357,42 +422,25 @@ def solve(inp: SchedulerInput) -> SolverResult:
             U_max = round(float(f[2]), 1),
             Idle  = round(float(f[3]), 1),
         )
-        for idx, f in enumerate(res.F)
+        for idx, f in enumerate(F_unique)
     ]
 
-    weighted = (inp.w1 * res.F[:, 0] + inp.w2 * res.F[:, 1]
-              + inp.w3 * res.F[:, 2] + inp.P  * res.F[:, 3])
-    best_x = res.X[int(np.argmin(weighted))]
+    # Decode a distinct schedule for EVERY unique Pareto-front member — each
+    # one has its own decision vector (X_unique[idx]) and therefore its own
+    # room/day/time assignment, not just its own objective values.
+    all_schedules = [_build_schedule_entries(x, inst) for x in X_unique]
 
-    schedule  = _greedy_decode(best_x, inst)
-    SLOT      = 10
-    n_class   = inst["n_classrooms"]
-
-    best_schedule = []
-    for i in range(inst["n_instances"]):
-        r, d, t, fi, sis = schedule.get(i, (-1, 0, 0, -1, []))
-        dur_i = inst["durations"][i]
-        best_schedule.append(ScheduleEntry(
-            instance_id    = i,
-            course_id      = inst["course_of_instance"][i],
-            course_code    = inst["course_code_of"][i],
-            course_type    = inst["instance_type"][i],
-            classroom      = r,
-            room_label     = _room_label(r, n_class),
-            day            = d,
-            slot_start     = t,
-            start_min      = t * SLOT,
-            end_min        = t * SLOT + dur_i,
-            duration       = dur_i,
-            faculty        = fi,
-            student_groups = sis,
-        ))
+    weighted    = (inp.w1 * F_unique[:, 0] + inp.w2 * F_unique[:, 1]
+                 + inp.w3 * F_unique[:, 2] + inp.P  * F_unique[:, 3])
+    best_index  = int(np.argmin(weighted))
+    best_schedule = all_schedules[best_index]
 
     return SolverResult(
         status            = "ok",
         solve_time        = elapsed,
         pareto_solutions  = pareto_solutions,
         best_schedule     = best_schedule,
+        all_schedules     = all_schedules,
         n_instances       = inst["n_instances"],
         n_theory_courses  = inst["n_theory_courses"],
         n_lab_courses     = inst["n_lab_courses"],

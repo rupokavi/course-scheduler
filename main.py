@@ -80,9 +80,17 @@ def get_routine(job_id: str, solution_index: int):
         raise HTTPException(status_code=400, detail="Job not done yet")
 
     result = job["result"]
+    all_schedules = result.get("all_schedules") or []
+
+    if 0 <= solution_index < len(all_schedules):
+        schedule = all_schedules[solution_index]
+    else:
+        # Fallback for older result payloads without all_schedules
+        schedule = result["best_schedule"]
+
     return {
         "solution_index": solution_index,
-        "schedule": result["best_schedule"],
+        "schedule": schedule,
         "pareto":   result["pareto_solutions"][solution_index]
                     if solution_index < len(result["pareto_solutions"])
                     else result["pareto_solutions"][0],

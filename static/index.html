@@ -122,7 +122,7 @@
       <div class="sec-label">Student Groups / Sections</div>
       <p class="text-muted" style="font-size:13px">Define each year or section. Courses will be assigned to one group.</p>
       <table class="data-table" id="sg-table">
-        <thead><tr><th>#</th><th>Group Name</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Group Name</th><th>Home Classroom</th><th></th></tr></thead>
         <tbody id="sg-body"></tbody>
       </table>
       <button class="btn btn-outline-primary btn-add mt-3" onclick="addGroup()">+ Add Group</button>
@@ -175,7 +175,7 @@
       <div class="row g-3">
         <div class="col-sm-4">
           <label class="form-label fw-semibold">Theory Classrooms</label>
-          <input type="number" id="n_classrooms" class="form-control" value="4" min="1" max="30"/>
+          <input type="number" id="n_classrooms" class="form-control" value="4" min="1" max="30" onchange="renderGroups()"/>
           <div class="form-text">e.g. R-301, R-302… (theory sessions only)</div>
         </div>
         <div class="col-sm-4">
@@ -276,7 +276,7 @@ function switchTab(n) {
 
 // ── Student Groups ─────────────────────────────────────────────────────────
 function addGroup(name='') {
-  groups.push({name});
+  groups.push({name, home: groups.length});   // default home room = own index (matches 1st→R-301, 2nd→R-302 ...)
   renderGroups();
 }
 function removeGroup(i) {
@@ -286,10 +286,25 @@ function removeGroup(i) {
 }
 function renderGroups() {
   const tbody = document.getElementById('sg-body');
+  const nRooms = parseInt(document.getElementById('n_classrooms')?.value) || 4;
+  const roomOptions = (selected) => {
+    let opts = `<option value="-1" ${selected===-1?'selected':''}>No home room</option>`;
+    for (let r = 0; r < nRooms; r++) {
+      opts += `<option value="${r}" ${selected===r?'selected':''}>R-${301+r}</option>`;
+    }
+    return opts;
+  };
   tbody.innerHTML = groups.map((g,i) => `
     <tr>
       <td style="width:40px;color:#888">${i}</td>
       <td><input value="${g.name}" oninput="groups[${i}].name=this.value;renderCourses()" placeholder="e.g. 1st Year IPE"/></td>
+      <td style="width:170px">
+        <select class="form-control form-control-sm" style="font-size:12.5px"
+                onchange="groups[${i}].home=parseInt(this.value)"
+                title="Room this group's theory classes default to. 'No home room' = fully flexible.">
+          ${roomOptions(g.home ?? -1)}
+        </select>
+      </td>
       <td style="width:40px"><button class="btn-del" onclick="removeGroup(${i})">×</button></td>
     </tr>`).join('');
   updateSummary();
@@ -405,7 +420,7 @@ function updateSummary() {
 // ── Preset: RUET IPE ──────────────────────────────────────────────────────
 function loadPreset() {
   groups = [
-    {name:'1st Year'},{name:'2nd Year'},{name:'3rd Year'},{name:'4th Year'}
+    {name:'1st Year', home:0},{name:'2nd Year', home:1},{name:'3rd Year', home:2},{name:'4th Year', home:3}
   ];
   courses = [
     {code:'Chem 1123',type:'theory',credits:3,sg:0},{code:'Phy 1123',type:'theory',credits:3,sg:0},
@@ -525,6 +540,7 @@ function buildPayload() {
     n_classrooms: parseInt(document.getElementById('n_classrooms').value),
     n_labs:       parseInt(document.getElementById('n_labs').value),
     n_student_groups: groups.length,
+    home_classrooms: groups.map(g => (g.home === undefined || g.home === null || isNaN(g.home)) ? -1 : g.home),
     seed:         parseInt(document.getElementById('seed').value),
     pop_size:     parseInt(document.getElementById('pop_size').value),
     n_gen:        parseInt(document.getElementById('n_gen').value),

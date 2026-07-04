@@ -43,6 +43,12 @@ class SchedulerInput(BaseModel):
     n_student_groups: int   = 1
     seed:             int   = 42
 
+    # Constraint 18 — Daily Primary Classroom: home_classrooms[s] = P_s, the
+    # fixed theory classroom index (0-based into the n_classrooms pool) for
+    # student group s. -1 (or missing entry) means "no home room" — group s
+    # is left fully flexible, same as before this constraint existed.
+    home_classrooms: List[int] = []
+
     # NSGA-II hyperparameters
     pop_size: int   = 80
     n_gen:    int   = 100
@@ -86,6 +92,7 @@ class SolverResult(BaseModel):
     solve_time:       Optional[float]      = None
     pareto_solutions: List[ParetoSolution] = []
     best_schedule:    List[ScheduleEntry]  = []
+    all_schedules:    List[List[ScheduleEntry]] = []   # one schedule per Pareto solution, indexed the same way
     n_instances:      int   = 0
     n_theory_courses: int   = 0
     n_lab_courses:    int   = 0
