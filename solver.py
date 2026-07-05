@@ -288,11 +288,25 @@ class CourseFJSP(Problem):
         schedule = _greedy_decode(x, inst)
         stg_of   = inst["student_groups_of"]
 
-        # C_max
+        # C_max — real finish time of the placed schedule, plus a penalty that
+        # SCALES with the number of unplaced sessions. The old version set
+        # C_max flatly to D*Td (the absolute worst case) the moment even ONE
+        # session was unplaced — which made 1 unplaced session look exactly
+        # as bad as 10, gave the optimizer no gradient to reduce unplaced
+        # count, and showed a Makespan number with no matching class in the
+        # visible routine. This version keeps C_max tied to what's actually
+        # on screen, with each unplaced session adding one extra "day" worth
+        # of penalty on top.
+        UNPLACED_PENALTY = Td   # one full day's worth of minutes, per unplaced session
         C_max = 0
+        n_unplaced = 0
         for i in range(m):
             r, d, t = schedule[i][0], schedule[i][1], schedule[i][2]
-            C_max = max(C_max, D * Td if r == -1 else d * Td + t * SLOT + dur[i])
+            if r == -1:
+                n_unplaced += 1
+            else:
+                C_max = max(C_max, d * Td + t * SLOT + dur[i])
+        C_max += n_unplaced * UNPLACED_PENALTY
 
         # W_max
         W_max = 0
@@ -414,6 +428,33 @@ def solve(inp: SchedulerInput) -> SolverResult:
     F_unique = res.F[unique_idx]
     X_unique = res.X[unique_idx]
 
+    # Decode a schedule for every unique solution FIRST, so we can check
+    # feasibility (any unplaced session?) before deciding what to show.
+    all_schedules_raw = [_build_schedule_entries(x, inst) for x in X_unique]
+    n_unplaced_per_sol = [sum(1 for e in sched if e.classroom == -1) for sched in all_schedules_raw]
+
+    feasible_mask = [n == 0 for n in n_unplaced_per_sol]
+    n_feasible    = sum(feasible_mask)
+
+    if n_feasible > 0:
+        # Normal case: only show solutions where every session was actually
+        # placed. A schedule with unplaced sessions isn't a usable timetable,
+        # so it shouldn't be presented as a valid Pareto solution.
+        keep_idx = [i for i, ok in enumerate(feasible_mask) if ok]
+        status_msg = "ok"
+    else:
+        # No fully feasible solution was found at all (rare — usually means
+        # pop_size/n_gen is too low, or the instance is over-constrained).
+        # Fall back to showing the LEAST-bad solutions so the user isn't
+        # left with an empty screen, but flag it clearly.
+        keep_idx = list(range(len(X_unique)))
+        status_msg = "ok_no_fully_feasible_solution"
+
+    F_unique      = F_unique[keep_idx]
+    X_unique      = X_unique[keep_idx]
+    all_schedules = [all_schedules_raw[i] for i in keep_idx]
+    n_filtered_out = len(all_schedules_raw) - len(all_schedules)
+
     pareto_solutions = [
         ParetoSolution(
             index = idx,
@@ -425,18 +466,13 @@ def solve(inp: SchedulerInput) -> SolverResult:
         for idx, f in enumerate(F_unique)
     ]
 
-    # Decode a distinct schedule for EVERY unique Pareto-front member — each
-    # one has its own decision vector (X_unique[idx]) and therefore its own
-    # room/day/time assignment, not just its own objective values.
-    all_schedules = [_build_schedule_entries(x, inst) for x in X_unique]
-
     weighted    = (inp.w1 * F_unique[:, 0] + inp.w2 * F_unique[:, 1]
                  + inp.w3 * F_unique[:, 2] + inp.P  * F_unique[:, 3])
     best_index  = int(np.argmin(weighted))
     best_schedule = all_schedules[best_index]
 
     return SolverResult(
-        status            = "ok",
+        status            = status_msg,
         solve_time        = elapsed,
         pareto_solutions  = pareto_solutions,
         best_schedule     = best_schedule,
