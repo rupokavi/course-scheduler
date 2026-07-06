@@ -144,6 +144,7 @@
     <h1>📅 Class Routine</h1>
     <div class="d-flex gap-2 no-print">
       <a id="back-btn" href="/results-page" class="btn btn-outline-light btn-sm">← Back to Results</a>
+      <a id="analysis-btn" href="#" class="btn btn-outline-light btn-sm">📊 View Analysis</a>
       <button class="btn btn-outline-light btn-sm" onclick="window.print()">🖨 Print</button>
     </div>
   </div>
@@ -219,6 +220,7 @@ window.addEventListener('load', async () => {
   jobId  = p.get('job') || sessionStorage.getItem('job_id');
   solIdx = p.get('sol') || sessionStorage.getItem('solution_index') || 0;
   document.getElementById('back-btn').href = '/results-page?job=' + jobId;
+  document.getElementById('analysis-btn').href = `/analysis-page?job=${jobId}&sol=${solIdx}`;
 
   if (!jobId) {
     document.getElementById('loading').innerHTML =

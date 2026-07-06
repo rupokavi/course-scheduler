@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Solution Analysis – RUET IPE Scheduler</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <style>
+    :root {
+      --primary:       #1a1a2e;
+      --primary-2:     #16213e;
+      --accent:        #4f8ef7;
+      --accent-warn:   #e8a23d;
+      --accent-danger: #c0392b;
+      --bg:            #f4f6fb;
+      --card-bg:       #ffffff;
+      --border:        #e6e9f2;
+      --text-muted:    #6c757d;
+      --radius:        10px;
+      --shadow:        0 2px 18px rgba(20, 20, 50, 0.07);
+
+      /* Standard tab10 categorical palette — reused across all charts */
+      --cat-1: #1f77b4; --cat-2: #ff7f0e; --cat-3: #2ca02c; --cat-4: #d62728;
+      --cat-5: #9467bd; --cat-6: #8c564b; --cat-7: #e377c2; --cat-8: #7f7f7f;
+    }
+
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+    body { background: var(--bg); font-size: 13px; color:#20232a; }
+
+    .header-bar {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+      color:#fff; padding:18px 0;
+    }
+    .header-bar h1 { font-size:1.25rem; font-weight:700; margin:0; letter-spacing:-0.01em; }
+    .header-bar .btn { transition: all .15s ease; font-weight:500; }
+    .header-bar .btn:hover { transform: translateY(-1px); }
+
+    .card {
+      background: var(--card-bg); border-radius: var(--radius);
+      box-shadow: var(--shadow); border: 1px solid var(--border);
+      padding:20px; transition: box-shadow .2s ease;
+    }
+    .card:hover { box-shadow: 0 4px 24px rgba(20,20,50,0.10); }
+
+    .badge-chip {
+      background: var(--primary); color:#fff; font-size:12px; font-weight:500;
+      padding:8px 14px; border-radius:999px;
+    }
+
+    #loading { text-align:center; padding:60px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header-bar">
+  <div class="container d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h1><i class="bi bi-bar-chart-line-fill me-2"></i>Solution Analysis</h1>
+    <div class="d-flex gap-2">
+      <a id="routine-btn" href="#" class="btn btn-outline-light btn-sm"><i class="bi bi-calendar3 me-1"></i>View Timetable</a>
+      <a id="back-btn" href="/results-page" class="btn btn-outline-light btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Results</a>
+    </div>
+  </div>
+</div>
+
+<div class="container-fluid px-3 pb-5">
+
+  <!-- Info chips -->
+  <div id="info-bar" class="d-flex gap-2 flex-wrap mt-3 mb-3"></div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner-border text-secondary mb-3"></div>
+    <div>Loading analysis…</div>
+  </div>
+
+  <!-- Charts -->
+  <div id="charts-wrap" class="row gy-3" style="display:none">
+    <div class="col-lg-6">
+      <div class="card">
+        <div id="idle-heatmap" style="height:380px"></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card">
+        <div id="room-usage-chart" style="height:380px"></div>
+      </div>
+    </div>
+    <div class="col-lg-12">
+      <h6 class="mt-2 mb-1" style="color:#555">Student Group Workload per Day (individual)</h6>
+      <div id="workload-charts-wrap" class="row gy-3"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const DAYS = ['Saturday','Sunday','Monday','Tuesday','Wednesday'];
+
+// Explicit ColorBrewer YlOrRd sequential scale, low -> pale yellow, high -> dark red.
+// (Plotly's built-in colorscale: 'YlOrRd' string renders in the OPPOSITE direction —
+// dark red at low values, pale yellow at high — so we define our own stops instead.)
+const YLORRD = [
+  [0,    '#FFFFCC'],
+  [0.2,  '#FFEDA0'],
+  [0.4,  '#FEB24C'],
+  [0.6,  '#FD8D3C'],
+  [0.8,  '#E31A1C'],
+  [1,    '#800026'],
+];
+
+let routineData = null;
+let jobId = null, solIdx = null;
+
+window.addEventListener('load', async () => {
+  const p = new URLSearchParams(window.location.search);
+  jobId  = p.get('job') || sessionStorage.getItem('job_id');
+  solIdx = p.get('sol') || sessionStorage.getItem('solution_index') || 0;
+
+  document.getElementById('back-btn').href    = '/results-page?job=' + jobId;
+  document.getElementById('routine-btn').href = `/routine-page?job=${jobId}&sol=${solIdx}`;
+
+  if (!jobId) {
+    document.getElementById('loading').innerHTML =
+      '<div class="alert alert-danger">No job found. <a href="/">Go back</a></div>';
+    return;
+  }
+  try {
+    const resp = await fetch(`/routine/${jobId}/${solIdx}`);
+    if (!resp.ok) throw new Error('Could not load solution data');
+    routineData = await resp.json();
+    renderPage();
+  } catch(err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="alert alert-danger">Error: ${err.message}. <a href="/">Go back</a></div>`;
+  }
+});
+
+function renderPage() {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('charts-wrap').style.display = 'flex';
+
+  renderInfoBar();
+
+  // Wait for layout to settle after the display:none -> flex swap, otherwise
+  // Plotly can measure a 0-width container and draw a tiny collapsed chart.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      renderIdleHeatmap();
+      renderRoomUsageChart();
+      renderWorkloadChart();
+    });
+  });
+}
+
+function renderInfoBar() {
+  const par = routineData.pareto;
+  const chips = [
+    {label:'Solution',     value:`#${parseInt(solIdx)+1}`},
+    {label:'Makespan',     value:par.C_max+' min'},
+    {label:'Student Load', value:par.W_max+' min'},
+    {label:'Room Load',    value:par.U_max+' min'},
+    {label:'Idle',         value:par.Idle+' min'},
+  ];
+  document.getElementById('info-bar').innerHTML = chips.map(c=>`
+    <span class="badge-chip rounded-pill">${c.label}: <strong>${c.value}</strong></span>`).join('');
+}
+
+function getGroupNames() {
+  const meta = routineData.meta;
+  return meta.groups && meta.groups.length
+       ? meta.groups
+       : Array.from({length:meta.n_student_groups},(_,i)=>`Group ${i+1}`);
+}
+
+// ── Idle Gap heatmap (per group, per day) ──────────────────────────────────
+function computeIdleGrid() {
+  const groups = getGroupNames();
+  const BREAK1 = [150, 170], BREAK2 = [320, 390];   // same as solver.py
+
+  const grid = groups.map(() => DAYS.map(() => 0));
+  groups.forEach((gname, gi) => {
+    DAYS.forEach((dname, di) => {
+      const slots = routineData.schedule
+        .filter(e => e.classroom !== -1 && e.day === di && e.student_groups.includes(gi))
+        .map(e => [e.start_min, e.end_min]);
+      if (!slots.length) return;
+      const E_sd       = Math.min(...slots.map(s => s[0]));
+      const L_sd       = Math.max(...slots.map(s => s[1]));
+      const classTime  = slots.reduce((a, s) => a + (s[1] - s[0]), 0);
+      const breakIn    = [BREAK1, BREAK2].reduce(
+        (a, [bs, be]) => a + Math.max(0, Math.min(be, L_sd) - Math.max(bs, E_sd)), 0);
+      grid[gi][di] = Math.max(0, L_sd - E_sd - classTime - breakIn);
+    });
+  });
+  return {groups, grid};
+}
+
+function renderIdleHeatmap() {
+  const {groups, grid} = computeIdleGrid();
+  const maxVal = Math.max(1, ...grid.flat());
+
+  const annotations = [];
+  groups.forEach((g, gi) => DAYS.forEach((d, di) => {
+    annotations.push({
+      x: di, y: gi, text: String(grid[gi][di]), showarrow: false,
+      font: {color: grid[gi][di] > maxVal * 0.6 ? '#fff' : '#333', size: 11},
+    });
+  }));
+
+  Plotly.newPlot('idle-heatmap', [{
+    z: grid, x: DAYS, y: groups, type: 'heatmap',
+    colorscale: YLORRD, zmin: 0, zmax: maxVal,
+    colorbar: {title: 'Idle (min)', thickness: 12},
+    hovertemplate: '%{y} · %{x}<br>Idle: %{z} min<extra></extra>',
+  }], {
+    title: {text: 'Idle Gap per Group and Day', font: {size: 14}},
+    margin: {t: 40, l: 80, r: 10, b: 30},
+    annotations,
+  }, {responsive: true, displayModeBar: false, displaylogo: false}).then(() => Plotly.Plots.resize('idle-heatmap'));
+}
+
+// ── Classroom usage (%) ─────────────────────────────────────────────────────
+function computeRoomUsage() {
+  const meta = routineData.meta;
+  const roomLabels = [];
+  for (let i = 0; i < meta.n_classrooms; i++) roomLabels.push(`R-${301 + i}`);
+  for (let i = 0; i < meta.n_labs;       i++) roomLabels.push(`Lab-${i + 1}`);
+
+  const usage = {};
+  roomLabels.forEach(r => usage[r] = 0);
+  routineData.schedule.forEach(e => {
+    if (e.classroom !== -1) usage[e.room_label] = (usage[e.room_label] || 0) + e.duration;
+  });
+  return {roomLabels, usage};
+}
+
+function renderRoomUsageChart() {
+  const {roomLabels, usage} = computeRoomUsage();
+  const meta     = routineData.meta;
+  const capacity = meta.DAYS * meta.Td;              // total weekly minutes a room COULD be used
+  const mins     = roomLabels.map(r => usage[r] || 0);
+  const pctText  = mins.map(m => (m / capacity * 100).toFixed(1) + '%');
+  const maxMin   = Math.max(1, ...mins);
+
+  Plotly.newPlot('room-usage-chart', [{
+    x: roomLabels, y: mins, type: 'bar', marker: {color: '#4f8ef7'},
+    text: pctText, textposition: 'outside',
+    hovertemplate: '%{x}<br>%{y} min<extra></extra>',
+  }], {
+    title: {text: 'Classroom Usage', font: {size: 14}},
+    yaxis: {title: 'Weekly Minutes', range: [0, maxMin * 1.2]},   // headroom so % labels aren't clipped
+    margin: {t: 40, l: 50, r: 10, b: 60},
+  }, {responsive: true, displayModeBar: false, displaylogo: false}).then(() => Plotly.Plots.resize('room-usage-chart'));
+}
+
+// ── Student Workload per Day (per group) ───────────────────────────────────
+// This is literally the W_max objective, broken out by group and day instead
+// of collapsed into a single worst-case number.
+function computeWorkloadGrid() {
+  const groups = getGroupNames();
+  const grid = groups.map(() => DAYS.map(() => 0));   // grid[group][day] = total class minutes that day
+  groups.forEach((gname, gi) => {
+    DAYS.forEach((dname, di) => {
+      const total = routineData.schedule
+        .filter(e => e.classroom !== -1 && e.day === di && e.student_groups.includes(gi))
+        .reduce((a, e) => a + e.duration, 0);
+      grid[gi][di] = total;
+    });
+  });
+  return {groups, grid};
+}
+
+// Standard matplotlib "tab10" categorical palette — a well-established,
+// widely-recognized qualitative color scheme (default color cycle in
+// matplotlib/seaborn). Read from the CSS custom properties (--cat-1..8)
+// so the palette has one single source of truth shared with the stylesheet.
+const rootStyles = getComputedStyle(document.documentElement);
+const TAB10 = [1,2,3,4,5,6,7,8].map(i => rootStyles.getPropertyValue(`--cat-${i}`).trim());
+
+function renderWorkloadChart() {
+  const {groups, grid} = computeWorkloadGrid();
+  const wMax = routineData.pareto ? routineData.pareto.W_max : null;
+  const wrap = document.getElementById('workload-charts-wrap');
+
+  // Build one card + chart div per group
+  wrap.innerHTML = groups.map((gname, gi) => `
+    <div class="col-lg-6">
+      <div class="card">
+        <div id="workload-chart-${gi}" style="height:300px"></div>
+      </div>
+    </div>`).join('');
+
+  groups.forEach((gname, gi) => {
+    const color = TAB10[gi % TAB10.length];
+    const shapes = [];
+    const annotations = [];
+    if (wMax !== null) {
+      shapes.push({
+        type: 'line', x0: -0.5, x1: DAYS.length - 0.5, y0: wMax, y1: wMax,
+        line: {color: '#c0392b', width: 2, dash: 'dash'},
+      });
+      annotations.push({
+        x: DAYS.length - 1, y: wMax, xanchor: 'right', yanchor: 'bottom',
+        text: `W_max = ${wMax} min`, showarrow: false,
+        font: {color: '#c0392b', size: 10},
+      });
+    }
+
+    Plotly.newPlot(`workload-chart-${gi}`, [{
+      x: DAYS, y: grid[gi], type: 'bar',
+      marker: {color},
+      hovertemplate: `${gname}<br>%{x}: %{y} min<extra></extra>`,
+    }], {
+      title: {text: `${gname} — Workload per Day`, font: {size: 13}},
+      yaxis: {title: 'Class Minutes', range: [0, Math.max(wMax || 0, ...grid[gi]) * 1.15]},
+      margin: {t: 35, l: 55, r: 10, b: 40},
+      shapes, annotations,
+    }, {responsive: true, displayModeBar: false, displaylogo: false}).then(() => Plotly.Plots.resize(`workload-chart-${gi}`));
+  });
+}
+</script>
+</body>
+</html>

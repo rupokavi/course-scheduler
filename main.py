@@ -44,6 +44,10 @@ def results_page():
 def routine_page():
     return FileResponse("static/routine.html")
 
+@app.get("/analysis-page")
+def analysis_page():
+    return FileResponse("static/analysis.html")
+
 
 @app.post("/solve")
 def start_solver(inp: SchedulerInput, background_tasks: BackgroundTasks):

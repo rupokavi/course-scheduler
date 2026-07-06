@@ -75,10 +75,13 @@
       </div>
     </div>
 
-    <!-- View routine button -->
+    <!-- View routine / analysis buttons -->
     <div class="mt-4 text-center">
       <button id="view-btn" class="btn btn-dark btn-lg px-5 fw-semibold" onclick="viewRoutine()" disabled>
         📅 View Timetable for Selected Solution
+      </button>
+      <button id="analysis-btn" class="btn btn-outline-dark btn-lg px-5 fw-semibold" onclick="viewAnalysis()" disabled>
+        📊 View Analysis
       </button>
       <div class="mt-2" style="font-size:13px;color:#888">Select a solution above first</div>
     </div>
@@ -209,6 +212,7 @@ function selectSolution(idx) {
   document.querySelectorAll('.sol-row').forEach(r => r.classList.remove('selected'));
   document.getElementById('row-' + idx).classList.add('selected');
   document.getElementById('view-btn').disabled = false;
+  document.getElementById('analysis-btn').disabled = false;
 
   // Reset all Select buttons back to outline, then fill the selected one
   document.querySelectorAll('[id^="btn-"]').forEach(b => {
@@ -234,6 +238,13 @@ function viewRoutine() {
   sessionStorage.setItem('job_id', jobId);
   sessionStorage.setItem('solution_index', selectedIdx);
   window.location.href = '/routine-page?job=' + jobId + '&sol=' + selectedIdx;
+}
+
+function viewAnalysis() {
+  if (selectedIdx === null) return;
+  sessionStorage.setItem('job_id', jobId);
+  sessionStorage.setItem('solution_index', selectedIdx);
+  window.location.href = '/analysis-page?job=' + jobId + '&sol=' + selectedIdx;
 }
 </script>
 </body>
