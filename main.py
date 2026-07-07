@@ -9,8 +9,9 @@ import uuid
 from typing import Dict
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from models import SchedulerInput, SolverResult
+from excel_export import build_routine_workbook, workbook_to_bytes
 
 app = FastAPI(title="University Course Scheduler", version="2.0")
 
@@ -111,3 +112,36 @@ def get_routine(job_id: str, solution_index: int):
             "courses":          result.get("courses", []),
         }
     }
+
+
+@app.get("/routine/{job_id}/{solution_index}/excel")
+def download_routine_excel(job_id: str, solution_index: int):
+    """Same routine data as /routine/{job_id}/{solution_index}, rendered as
+    an .xlsx that visually matches the official RUET IPE routine template."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job = jobs[job_id]
+    if job["status"] != "done":
+        raise HTTPException(status_code=400, detail="Job not done yet")
+
+    result = job["result"]
+    all_schedules = result.get("all_schedules") or []
+    if 0 <= solution_index < len(all_schedules):
+        schedule = all_schedules[solution_index]
+    else:
+        schedule = result["best_schedule"]
+
+    meta = {
+        "DAYS":             result["DAYS"],
+        "n_student_groups": result["n_student_groups"],
+        "groups":           result.get("groups", []),
+    }
+
+    wb = build_routine_workbook(schedule, meta)
+    buf = workbook_to_bytes(wb)
+    filename = f"IPE_Class_Routine_sol{solution_index + 1}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

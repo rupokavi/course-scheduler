@@ -125,12 +125,37 @@
     .legend-box { display:inline-flex; align-items:center; gap:6px; font-size:12px; }
     .leg-sq { width:14px; height:14px; border-radius:3px; border:1px solid #ccc; }
 
-    /* Print */
+    /* ── Print-only per-day tables ──────────────────────────────────────────
+       Cramming all 5 days into one page-width table is unreadable once
+       shrunk to fit — 57 columns just can't be legible on paper. Instead,
+       for print we render ONE table per day (2 label cols + 11 period cols
+       = 13 cols), each on its own landscape page at a normal, readable
+       font size. Hidden on screen; only shown when printing. */
+    .print-only { display: none; }
+
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
     @media print {
-      body { background: #fff; font-size:10px; }
+      body { background: #fff; font-size:11px; }
       .no-print { display:none !important; }
-      .routine-wrap { box-shadow:none; margin:0; }
-      #rt { min-width: unset; }
+      .routine-wrap { display: none !important; }
+      .print-only { display: block !important; }
+
+      .rt-print {
+        border-collapse: collapse;
+        width: 100%;
+        page-break-after: always;
+      }
+      .rt-print:last-of-type { page-break-after: auto; }
+      .rt-print th, .rt-print td {
+        border: 1px solid #b0b8cc;
+        padding: 0;
+        vertical-align: middle;
+        text-align: center;
+        font-size: 11px;
+      }
     }
 
     #loading { text-align:center; padding:60px; color:#6c757d; }
@@ -146,6 +171,7 @@
       <a id="back-btn" href="/results-page" class="btn btn-outline-light btn-sm">← Back to Results</a>
       <a id="analysis-btn" href="#" class="btn btn-outline-light btn-sm">📊 View Analysis</a>
       <button class="btn btn-outline-light btn-sm" onclick="window.print()">🖨 Print</button>
+      <a id="excel-btn" href="#" class="btn btn-outline-light btn-sm">📥 Download Excel</a>
     </div>
   </div>
 </div>
@@ -169,10 +195,13 @@
     <div>Loading timetable…</div>
   </div>
 
-  <!-- Routine table -->
+  <!-- Routine table (screen) -->
   <div class="routine-wrap" id="routine-wrap" style="display:none">
     <table id="rt"></table>
   </div>
+
+  <!-- Routine tables (print-only, one per day, filled in by renderPrintTables) -->
+  <div id="print-wrap" class="print-only"></div>
 
   <!-- Unscheduled warning -->
   <div id="unscheduled-box" class="alert alert-warning mt-3" style="display:none">
@@ -221,6 +250,7 @@ window.addEventListener('load', async () => {
   solIdx = p.get('sol') || sessionStorage.getItem('solution_index') || 0;
   document.getElementById('back-btn').href = '/results-page?job=' + jobId;
   document.getElementById('analysis-btn').href = `/analysis-page?job=${jobId}&sol=${solIdx}`;
+  document.getElementById('excel-btn').href = `/routine/${jobId}/${solIdx}/excel`;
 
   if (!jobId) {
     document.getElementById('loading').innerHTML =
@@ -246,6 +276,7 @@ function renderPage() {
   renderInfoBar();
   renderUnscheduled();
   renderTable();
+  renderPrintTables();
 }
 
 function renderInfoBar() {
@@ -426,6 +457,135 @@ function renderTable() {
   }
 
   document.getElementById('rt').innerHTML = html;
+}
+
+// ── Print tables: one per student year/group ─────────────────────────────
+// A page-per-day still needs 55 period-columns (11 × 5 days) since every
+// group has to fit on it. A page-per-group only needs to show ONE group,
+// so we transpose it: periods go across the top (11 cols) and days go down
+// as rows (5 rows) — a compact, easily readable single page per year,
+// matching how an individual routine card is normally handed out.
+function renderPrintTables() {
+  const meta     = routineData.meta;
+  const schedule = routineData.schedule.filter(e => e.classroom !== -1);
+  const groups   = meta.groups && meta.groups.length
+                   ? meta.groups
+                   : Array.from({length: meta.n_student_groups}, (_, i) => `Group ${i+1}`);
+  const nGroups  = groups.length;
+  const nDays    = meta.DAYS || 5;
+
+  // grid[group][day][col] — same construction as before.
+  const grid = Array.from({length: nGroups}, () =>
+    Array.from({length: nDays}, () => Array(NCOLS).fill(null))
+  );
+  schedule.forEach(e => {
+    const g = e.student_groups[0];
+    const d = e.day;
+    const col = MIN_TO_COL[e.start_min];
+    if (col === undefined || g === undefined || g >= nGroups) return;
+    grid[g][d][col] = e;
+    if (e.course_type === 'lab') {
+      let periodsLeft = 2, ci = col + 1;
+      while (periodsLeft > 0 && ci < NCOLS) {
+        grid[g][d][ci] = 'SKIP';
+        if (DAY_COLS[ci].type === 'period') periodsLeft--;
+        ci++;
+      }
+    }
+  });
+
+  const totalCols = 1 + NCOLS;   // 1 "Day" label col + 11 period cols
+  let out = '';
+
+  for (let g = 0; g < nGroups; g++) {
+    out += `<table class="rt-print">`;
+
+    out += `<tr>
+      <td colspan="${totalCols}" class="hdr-uni" style="font-size:14px;padding:8px 12px">
+        Heaven's Light Is Our Guide<br>
+        <span style="font-size:12px;font-weight:400">Rajshahi University of Engineering &amp; Technology</span><br>
+        <span style="font-size:11px;font-weight:400">Department of Industrial &amp; Production Engineering</span>
+      </td>
+    </tr>`;
+    out += `<tr>
+      <td colspan="${totalCols}" class="hdr-uni"
+          style="font-size:15px;font-weight:700;letter-spacing:.08em;padding:6px;color:#FFD700">
+        CLASS ROUTINE — ${groups[g]} (Odd Semester)
+      </td>
+    </tr>`;
+
+    // Period header row
+    out += `<tr><th class="hdr-period">Day \\ Period</th>`;
+    DAY_COLS.forEach(c => {
+      if (c.type === 'break')       out += `<th class="hdr-period col-break">Break</th>`;
+      else if (c.type === 'recess') out += `<th class="hdr-period col-recess">Recess</th>`;
+      else                          out += `<th class="hdr-period">${c.period}</th>`;
+    });
+    out += `</tr>`;
+
+    // Class time row
+    out += `<tr><th class="hdr-time">Class Time</th>`;
+    DAY_COLS.forEach(c => {
+      const cls = c.type === 'break' ? 'col-break' : c.type === 'recess' ? 'col-recess' : '';
+      out += `<th class="hdr-time ${cls}" style="white-space:pre-line">${c.time}</th>`;
+    });
+    out += `</tr>`;
+
+    // One row per day
+    for (let d = 0; d < nDays; d++) {
+      out += '<tr>';
+      out += `<th class="hdr-day">${DAYS[d]}</th>`;
+
+      for (let ci = 0; ci < NCOLS; ci++) {
+        const col  = DAY_COLS[ci];
+        const cell = grid[g][d][ci];
+
+        if (cell === 'SKIP') continue;
+
+        if (col.type === 'break') {
+          out += `<td class="col-break" style="font-size:9px;padding:2px">BREAK</td>`;
+          continue;
+        }
+        if (col.type === 'recess') {
+          out += `<td class="col-recess" style="font-size:9px;padding:2px">RECESS</td>`;
+          continue;
+        }
+        if (!cell) {
+          out += `<td class="cell-empty"></td>`;
+          continue;
+        }
+
+        const isLab = cell.course_type === 'lab';
+        const code  = cell.course_code || `C${cell.course_id}`;
+        const room  = cell.room_label || (isLab
+          ? `Lab-${cell.classroom+1}`
+          : `R-${String(cell.classroom+1).padStart(3,'0')}`);
+        const fac   = `F${cell.faculty>=0 ? cell.faculty : '?'}`;
+        const cls   = isLab ? 'cell-lab' : 'cell-theory';
+
+        let visualSpan = 1;
+        if (isLab) {
+          let periodsFound = 1, look = ci + 1;
+          while (periodsFound < 3 && look < NCOLS) {
+            visualSpan++;
+            if (DAY_COLS[look].type === 'period') periodsFound++;
+            look++;
+          }
+        }
+
+        out += `<td colspan="${visualSpan}" class="${cls}">
+          <div class="cname">${code}</div>
+          <div class="croom">${room}</div>
+          <div class="cfac">${fac}</div>
+        </td>`;
+      }
+      out += '</tr>';
+    }
+
+    out += `</table>`;
+  }
+
+  document.getElementById('print-wrap').innerHTML = out;
 }
 </script>
 </body>
