@@ -262,12 +262,14 @@ def _greedy_decode(x: np.ndarray, inst: dict) -> dict:
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SECTION 3 — NSGA-II PROBLEM CLASS
+#  NOTE: this returns the raw 4-value objective vector directly to pymoo's
+#  NSGA2, which performs TRUE Pareto dominance + crowding-distance selection.
+#  No weights are used anywhere in the optimization itself.
 # ══════════════════════════════════════════════════════════════════════════════
 
 class CourseFJSP(Problem):
-    def __init__(self, inst, w1=0.4, w2=0.3, w3=0.3, P=0.02):
+    def __init__(self, inst):
         self.inst = inst
-        self.w1 = w1; self.w2 = w2; self.w3 = w3; self.P = P
         super().__init__(n_var=inst["n_instances"] * 3, n_obj=4, xl=0.0, xu=1.0)
 
     def _evaluate(self, X, out, *args, **kwargs):
@@ -391,6 +393,25 @@ def _build_schedule_entries(x: np.ndarray, inst: dict) -> list:
     return entries
 
 
+def _pick_knee_solution(F: np.ndarray) -> int:
+    """
+    Choose a single "recommended" solution from a Pareto front WITHOUT any
+    user-specified weights. Standard method: normalize each objective to
+    [0,1] across the front, then pick the point with minimum Euclidean
+    distance to the ideal point (0,0,0,0) in that normalized space — i.e.
+    the most "balanced good all-rounder" solution. This is a purely
+    geometric property of the front itself, not a preference the user has
+    to supply.
+    """
+    F_min = F.min(axis=0)
+    F_max = F.max(axis=0)
+    F_range = F_max - F_min
+    F_range = np.where(F_range == 0, 1, F_range)   # avoid /0 if an objective is constant across the front
+    F_norm = (F - F_min) / F_range
+    distances = np.linalg.norm(F_norm, axis=1)
+    return int(np.argmin(distances))
+
+
 def solve(inp: SchedulerInput) -> SolverResult:
     if not PYMOO_AVAILABLE:
         return SolverResult(status="error: pymoo not installed")
@@ -399,7 +420,7 @@ def solve(inp: SchedulerInput) -> SolverResult:
 
     inst = build_instance(inp)
 
-    problem = CourseFJSP(inst, w1=inp.w1, w2=inp.w2, w3=inp.w3, P=inp.P)
+    problem = CourseFJSP(inst)
     algorithm = NSGA2(
         pop_size             = inp.pop_size,
         sampling             = FloatRandomSampling(),
@@ -453,7 +474,6 @@ def solve(inp: SchedulerInput) -> SolverResult:
     F_unique      = F_unique[keep_idx]
     X_unique      = X_unique[keep_idx]
     all_schedules = [all_schedules_raw[i] for i in keep_idx]
-    n_filtered_out = len(all_schedules_raw) - len(all_schedules)
 
     pareto_solutions = [
         ParetoSolution(
@@ -466,9 +486,9 @@ def solve(inp: SchedulerInput) -> SolverResult:
         for idx, f in enumerate(F_unique)
     ]
 
-    weighted    = (inp.w1 * F_unique[:, 0] + inp.w2 * F_unique[:, 1]
-                 + inp.w3 * F_unique[:, 2] + inp.P  * F_unique[:, 3])
-    best_index  = int(np.argmin(weighted))
+    # Pick the default "recommended" solution via weight-free knee-point
+    # selection (see _pick_knee_solution) instead of a user-weighted sum.
+    best_index    = _pick_knee_solution(F_unique)
     best_schedule = all_schedules[best_index]
 
     return SolverResult(

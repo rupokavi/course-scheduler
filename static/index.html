@@ -191,7 +191,7 @@
       </div>
     </div>
 
-    <div class="card p-4 mb-4">
+    <div class="card p-4">
       <div class="sec-label">🧬 NSGA-II Parameters</div>
       <div class="mb-3">
         <label class="form-label fw-semibold">Population Size</label>
@@ -213,23 +213,12 @@
           <span class="range-val" id="gen_val">100</span>
         </div>
       </div>
-    </div>
-
-    <div class="card p-4">
-      <div class="sec-label">⚖️ Objective Weights</div>
-      <div class="row g-3">
-        <div class="col-sm-4">
-          <label class="form-label fw-semibold">w1 – Makespan</label>
-          <input type="number" id="w1" class="form-control" value="0.4" min="0" max="1" step="0.05"/>
-        </div>
-        <div class="col-sm-4">
-          <label class="form-label fw-semibold">w2 – Student Load</label>
-          <input type="number" id="w2" class="form-control" value="0.3" min="0" max="1" step="0.05"/>
-        </div>
-        <div class="col-sm-4">
-          <label class="form-label fw-semibold">w3 – Room Load</label>
-          <input type="number" id="w3" class="form-control" value="0.3" min="0" max="1" step="0.05"/>
-        </div>
+      <div class="alert alert-light border py-2 px-3 mt-3 mb-0" style="font-size:12px;color:#666">
+        ℹ️ NSGA-II finds the full Pareto-optimal front directly — no priority weighting is
+        needed or used during optimization. On the results page, one solution is
+        pre-highlighted as a suggested starting point (chosen automatically as the most
+        balanced trade-off across all objectives), but every solution on the front is
+        equally valid and fully selectable.
       </div>
     </div>
   </div>
@@ -544,10 +533,6 @@ function buildPayload() {
     seed:         parseInt(document.getElementById('seed').value),
     pop_size:     parseInt(document.getElementById('pop_size').value),
     n_gen:        parseInt(document.getElementById('n_gen').value),
-    w1:           parseFloat(document.getElementById('w1').value),
-    w2:           parseFloat(document.getElementById('w2').value),
-    w3:           parseFloat(document.getElementById('w3').value),
-    P:            0.02,
   };
 }
 

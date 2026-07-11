@@ -53,11 +53,11 @@ class SchedulerInput(BaseModel):
     pop_size: int   = 80
     n_gen:    int   = 100
 
-    # Objective weights
-    w1: float = 0.4
-    w2: float = 0.3
-    w3: float = 0.3
-    P:  float = 0.02
+    # NOTE: objective weights (w1/w2/w3/P) were removed — NSGA-II performs
+    # true Pareto dominance selection and never used them during
+    # optimization. They only affected which single solution was
+    # pre-selected as the "default" recommendation; that's now chosen via
+    # a weight-free knee-point method instead (see solver.py).
 
 
 class ParetoSolution(BaseModel):
